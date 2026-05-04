@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Wishly</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="p-4 pb-24">
+
+    <!-- Header и переключатель пользователей -->
+    <header class="mb-6 pt-2">
+        <h1 class="text-3xl font-bold tracking-tight mb-4 text-center">Wishly</h1>
+        <div class="flex gap-2 p-1 bg-white/5 rounded-2xl w-full">
+            <button onclick="setUserFilter('all')" id="u-all" class="flex-1 py-2 rounded-xl tab-active transition-all text-sm">Всё вместе</button>
+            <button onclick="setUserFilter('me')" id="u-me" class="flex-1 py-2 rounded-xl tab-inactive transition-all text-sm">Мои</button>
+            <button onclick="setUserFilter('partner')" id="u-partner" class="flex-1 py-2 rounded-xl tab-inactive transition-all text-sm">Её</button>
+        </div>
+    </header>
+
+    <!-- Фильтр категорий -->
+    <div class="flex gap-6 mb-6 text-sm font-medium overflow-x-auto pb-2 whitespace-nowrap">
+        <button onclick="setCatFilter('all')" id="c-all" class="pb-1 cat-active transition-all">Все</button>
+        <button onclick="setCatFilter('gift')" id="c-gift" class="pb-1 cat-inactive transition-all">Подарки 🎁</button>
+        <button onclick="setCatFilter('food')" id="c-food" class="pb-1 cat-inactive transition-all">Рестораны 🍴</button>
+        <button onclick="setCatFilter('place')" id="c-place" class="pb-1 cat-inactive transition-all">Места 📍</button>
+        <button onclick="setCatFilter('goodies')" id="c-goodies" class="pb-1 cat-inactive transition-all">Ништяки 🍬</button>
+    </div>
+
+    <!-- Сетка карточек -->
+    <div id="wishlist" class="grid grid-cols-2 gap-4">
+        <!-- Карточки -->
+    </div>
+
+    <!-- Кнопка добавления -->
+    <button onclick="openModal()" class="fixed bottom-6 right-6 w-14 h-14 bg-white text-black rounded-full shadow-lg shadow-white/20 flex items-center justify-center active:scale-90 transition-transform z-40">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+    </button>
+
+    <!-- Модалка -->
+    <div id="modal" class="fixed inset-0 bg-black/95 z-50 hidden flex flex-col pt-10 px-4 overflow-y-auto">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold">Добавить</h2>
+            <button onclick="closeModal()" class="p-2 bg-white/10 rounded-full"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+        </div>
+
+        <!-- Выбор категории в модалке -->
+        <select id="modal-category" onchange="updateModalFields()" class="w-full bg-white/10 border border-white/10 rounded-2xl p-4 mb-4 outline-none text-lg appearance-none">
+            <option value="gift">Подарок 🎁</option>
+            <option value="food">Ресторан 🍴</option>
+            <option value="place">Место 📍</option>
+            <option value="goodies">Ништяк 🍬</option>
+        </select>
+
+        <input id="m-title" type="text" placeholder="Название..." class="w-full bg-white/5 border border-white/10 rounded-2xl p-4 mb-4 outline-none focus:border-white/30 text-lg">
+        
+        <input type="hidden" id="edit-id">
+        <div id="field-image" class="mb-4">
+            <label class="block text-xs text-white/50 mb-2 uppercase tracking-wide">Фотография</label>
+            <input type="file" id="m-image" accept="image/*" class="w-full text-sm text-white/50 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-white/10 file:text-white">
+        </div>
+
+        <div id="field-price" class="mb-4">
+            <label class="block text-xs text-white/50 mb-2 uppercase tracking-wide" id="label-price">Цена</label>
+            <input id="m-price" type="text" placeholder="Например: 5000 ₽" class="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none">
+        </div>
+
+        <div id="field-link" class="mb-4 hidden">
+            <label class="block text-xs text-white/50 mb-2 uppercase tracking-wide">Ссылка (на товар или меню)</label>
+            <input id="m-link" type="url" placeholder="https://..." class="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none text-blue-400">
+        </div>
+
+        <div id="field-location" class="mb-4 hidden">
+            <label class="block text-xs text-white/50 mb-2 uppercase tracking-wide">Точка на карте (ссылка)</label>
+            <input id="m-location" type="url" placeholder="Ссылка на Яндекс/Google карты" class="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none text-green-400">
+        </div>
+
+        <div id="field-desire" class="mb-8">
+            <label class="block text-xs text-white/50 mb-2 uppercase tracking-wide">Уровень желания</label>
+            <div class="flex gap-2">
+                <button onclick="setDesire(1)" class="desire-btn flex-1 py-2 rounded-xl bg-white/10 text-xl border border-transparent">🔥</button>
+                <button onclick="setDesire(2)" class="desire-btn flex-1 py-2 rounded-xl bg-white/10 text-xl border border-transparent">🔥🔥</button>
+                <button onclick="setDesire(3)" class="desire-btn flex-1 py-2 rounded-xl bg-white/10 text-xl border border-transparent">🔥🔥🔥</button>
+                <button onclick="setDesire(4)" class="desire-btn flex-1 py-2 rounded-xl bg-white/10 text-xl border border-transparent">🔥Безумно хочу🔥</button>
+            </div>
+        </div>
+
+        <button onclick="saveItem()" id="saveBtn" class="w-full p-4 rounded-2xl bg-white text-black font-bold text-lg mb-10 active:scale-95 transition-transform">Сохранить в хотелки</button>
+    </div>
+
+    <!-- Модалка просмотра -->
+    <div id="view-modal" class="fixed inset-0 bg-black/95 z-50 hidden flex flex-col pt-10 px-4 overflow-y-auto">
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <p class="text-sm text-white/50 mb-1">Что подсматриваем?</p>
+                <h2 id="view-title" class="text-2xl font-bold"></h2>
+            </div>
+            <button onclick="closeViewModal()" class="p-2 bg-white/10 rounded-full"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+        </div>
+        <div class="glass-card overflow-hidden mb-6">
+            <div id="view-image" class="h-80 bg-white/5 flex items-center justify-center overflow-hidden"></div>
+            <div class="p-4 space-y-4">
+                <div>
+                    <p class="text-xs text-white/50 uppercase tracking-wide mb-2">Цена</p>
+                    <div id="view-price" class="text-lg font-semibold text-white"></div>
+                </div>
+                <div>
+                    <p class="text-xs text-white/50 uppercase tracking-wide mb-2">Ссылка</p>
+                    <div id="view-link-text" class="text-sm text-white/60">Ссылка не добавлена</div>
+                </div>
+                <button id="view-link" onclick="openLink()" class="w-full p-4 rounded-2xl bg-white text-black font-bold text-lg active:scale-95 transition-transform hidden">Перейти по ссылке</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
