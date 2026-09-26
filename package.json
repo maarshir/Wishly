@@ -1,0 +1,8 @@
+{
+  "name": "wishly",
+  "private": true,
+  "description": "Общий список желаний на двоих внутри Телеграма",
+  "scripts": {
+    "test": "node --test"
+  }
+}
