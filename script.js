@@ -1,6 +1,11 @@
         // --- КОНФИГУРАЦИЯ ---
-        const SB_URL = 'https://gsjozmgbwuglqevjxuaj.supabase.co';
-        const SB_KEY = 'sb_publishable_NkwRATYjXxOox-HSnLd4xg_06Ds2vzH';
+        // Адрес и публичный ключ Supabase лежат в config.js (пример: config.example.js).
+        const { supabaseUrl: SB_URL, supabaseKey: SB_KEY } = window.WISHLY_CONFIG || {};
+        if (!SB_URL || !SB_KEY) {
+            document.body.innerHTML = '<p style="padding:2rem">Нет настроек базы. Скопируйте config.example.js в config.js и впишите адрес и ключ Supabase.</p>';
+            throw new Error('WISHLY_CONFIG не задан');
+        }
+        const { escapeHtml, safeUrl, safeImageSrc, categoryEmoji, filterByUser, cardHtml } = window.WishlyLib;
         
         const supabaseClient = supabase.createClient(SB_URL, SB_KEY);
         const tg = window.Telegram.WebApp;
@@ -14,6 +19,7 @@
         let userFilter = 'all'; // all, me, partner
         let catFilter = 'all';  // all, gift, food, place, goodies
         let currentDesire = 1;
+        let itemsById = new Map();
 
         // Свайп
         let startX = 0;
@@ -29,15 +35,11 @@
             const { data, error } = await query;
             if (error) return console.error(error);
 
-            // Фильтр по пользователю (делаем на клиенте для простоты)
-            let filteredData = data;
-            if (userFilter === 'me') {
-                filteredData = data.filter(item => item.added_by === myName);
-            } else if (userFilter === 'partner') {
-                filteredData = data.filter(item => item.added_by !== myName);
-            }
+            // Все загруженные записи держим в памяти, кнопки на карточках ссылаются на них по id
+            itemsById = new Map(data.map(item => [String(item.id), item]));
 
-            render(filteredData);
+            // Фильтр по пользователю (делаем на клиенте для простоты)
+            render(filterByUser(data, userFilter, myName));
         }
 
         function render(items) {
@@ -49,41 +51,22 @@
             }
 
             list.className = "grid grid-cols-2 gap-4"; // Возвращаем сетку
-            list.innerHTML = items.map(item => `
-                <div onclick="viewItem(${JSON.stringify(item).replace(/"/g, '&quot;')})" class="glass-card flex flex-col relative ${item.is_completed ? 'opacity-30 grayscale' : ''} ${item.desire_level === 4 ? 'desire-4' : ''} cursor-pointer">
-                    ${item.image_url ? 
-                        `<img src="${item.image_url}" class="h-32 w-full object-cover">` : 
-                        `<div class="h-32 w-full bg-white/5 flex items-center justify-center text-4xl">${getCatData(item.category).emoji}</div>`
-                    }
-                    
-                    <div class="p-3 flex flex-col flex-grow">
-                        <div class="text-xs text-white/50 mb-1 flex justify-between">
-                            <span>${item.added_by === myName ? 'Моё' : 'Её'}</span>
-                            ${item.desire_level ? '🔥'.repeat(item.desire_level) : ''}
-                        </div>
-                        <div class="font-semibold text-sm mb-2 leading-tight">${item.title}</div>
-                        ${item.price ? `<div class="text-xs font-bold text-green-400 mb-2">${item.price}</div>` : ''}
-                        
-                        <div class="mt-auto flex gap-2">
-                            ${item.link ? `<a href="${item.link}" target="_blank" class="flex-1 bg-white/10 text-center py-1.5 rounded-lg text-xs hover:bg-white/20">Ссылка</a>` : ''}
-                            ${item.location ? `<a href="${item.location}" target="_blank" class="flex-1 bg-blue-500/20 text-blue-300 text-center py-1.5 rounded-lg text-xs hover:bg-blue-500/40">Карта</a>` : ''}
-                        </div>
-                    </div>
-                    <div class="category-badge">${getCatData(item.category).emoji}</div>
-                    <div class="absolute top-2 right-2 flex gap-1" onclick="event.stopPropagation()">
-                        ${item.added_by === myName ? `<button onclick="editItem(${JSON.stringify(item).replace(/"/g, '&quot;')})" class="w-8 h-8 rounded-full bg-black/50 backdrop-blur-md border border-white/20 text-white/50 flex items-center justify-center hover:border-white/50">
-                            ✏️
-                        </button>` : ''}
-                        ${item.added_by === myName ? `<button onclick="deleteItem('${item.id}')" class="w-8 h-8 rounded-full bg-black/50 backdrop-blur-md border border-red-400/50 text-red-400 flex items-center justify-center hover:border-red-400">
-                            🗑️
-                        </button>` : ''}
-                        <button onclick="toggleStatus('${item.id}', ${item.is_completed})" class="w-8 h-8 rounded-full bg-black/50 backdrop-blur-md border ${item.is_completed ? 'border-green-400 text-green-400' : 'border-white/20 text-white/50'} flex items-center justify-center">
-                            ✓
-                        </button>
-                    </div>
-                </div>
-            `).join('');
+            list.innerHTML = items.map(item => cardHtml(item, myName)).join('');
         }
+
+        // Один обработчик на весь список вместо onclick с данными внутри разметки
+        document.getElementById('wishlist').addEventListener('click', (e) => {
+            const target = e.target.closest('[data-action]');
+            if (!target) return;
+            const action = target.dataset.action;
+            if (action === 'none') return; // обычная ссылка, браузер откроет её сам
+            const item = itemsById.get(target.dataset.id);
+            if (!item) return;
+            if (action === 'view') viewItem(item);
+            else if (action === 'edit') editItem(item);
+            else if (action === 'delete') deleteItem(item.id);
+            else if (action === 'toggle') toggleStatus(item.id, item.is_completed);
+        });
 
         function editItem(item) {
             // Заполняем поля данными элемента
@@ -128,19 +111,21 @@
         function viewItem(item) {
             document.getElementById('view-title').innerText = item.title;
             const imageDiv = document.getElementById('view-image');
-            if (item.image_url) {
-                imageDiv.innerHTML = `<img src="${item.image_url}" class="w-full h-full object-cover">`;
+            const image = safeImageSrc(item.image_url);
+            if (image) {
+                imageDiv.innerHTML = `<img src="${escapeHtml(image)}" alt="" class="w-full h-full object-cover">`;
             } else {
-                imageDiv.innerHTML = `<div class="w-full h-full bg-white/5 flex items-center justify-center text-6xl">${getCatData(item.category).emoji}</div>`;
+                imageDiv.innerHTML = `<div class="w-full h-full bg-white/5 flex items-center justify-center text-6xl">${categoryEmoji(item.category)}</div>`;
             }
             const priceEl = document.getElementById('view-price');
             priceEl.innerText = item.price ? item.price : 'Цена не указана';
             const linkBtn = document.getElementById('view-link');
             const linkText = document.getElementById('view-link-text');
-            if (item.link) {
-                viewItemLink = item.link;
+            const link = safeUrl(item.link);
+            if (link) {
+                viewItemLink = link;
                 linkBtn.classList.remove('hidden');
-                linkText.innerText = item.link;
+                linkText.innerText = link;
                 linkText.classList.remove('text-white/60');
                 linkText.classList.add('text-white');
             } else {
@@ -155,7 +140,7 @@
 
         function openLink() {
             if (viewItemLink) {
-                window.open(viewItemLink, '_blank');
+                window.open(viewItemLink, '_blank', 'noopener');
             }
         }
 
@@ -189,16 +174,6 @@
             btns.forEach((b, i) => {
                 b.className = `desire-btn flex-1 py-2 rounded-xl text-xl border transition-all ${i+1 === level ? 'bg-white/20 border-white/50 scale-105' : 'bg-white/5 border-transparent'}`;
             });
-        }
-
-        function getCatData(c) {
-            const data = {
-                'gift': { emoji: '🎁' },
-                'food': { emoji: '🍴' },
-                'place': { emoji: '📍' },
-                'goodies': { emoji: '🍬' }
-            };
-            return data[c] || { emoji: '✨' };
         }
 
         // --- ЛОГИКА ДОБАВЛЕНИЯ (ДИНАМИКА) ---
